@@ -139,7 +139,7 @@ public:
     // Constants For restarts
     double    K;
     double    R;
-    double    sizeLBDQueue;
+    unsigned    sizeLBDQueue;
     double    sizeTrailQueue;
 
     // Constants for reduce DB
@@ -240,7 +240,7 @@ protected:
 
     int nbclausesbeforereduce;            // To know when it is time to reduce clause database
     
-    bqueue<unsigned int> trailQueue,lbdQueue; // Bounded queues for restarts.
+    bqueue<unsigned int> trailQueue,lbdQueue1,lbdQueue2; // Bounded queues for restarts.
     float sumLBD; // used to compute the global average of LBD. Restarts...
     int sumAssumptions;
 
@@ -316,6 +316,8 @@ protected:
 
     // Misc:
     //
+    bool	 lbdQueuesValid   ()      const;
+    unsigned   lbdQueueAverage  ()      const;
     int      decisionLevel    ()      const; // Gives the current decisionlevel.
     uint32_t abstractLevel    (Var x) const; // Used to represent an abstraction of sets of decision levels.
     CRef     reason           (Var x) const;
