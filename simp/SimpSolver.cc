@@ -43,7 +43,7 @@ static IntOption opt_clause_lim(_cat, "cl-lim",
 		"Variables are not eliminated if it produces a resolvent with a length above this limit. -1 means no limit",
 		INT32_MAX, IntRange(-1, INT32_MAX));
 static IntOption opt_elim_count_sz(_cat, "cl-elim-sz",
-		"clause length which counted as merged clauses in var elimination", 2,
+		"clause length which counted as merged clauses in var elimination", 7,
 		IntRange(2, INT32_MAX));
 static IntOption opt_subsumption_lim(_cat, "sub-lim",
 		"Do not check if subsumption against a clause larger than this. -1 means no limit.",
@@ -528,11 +528,6 @@ bool SimpSolver::eliminateVar(Var v) {
 					return true;
 				}
 		}
-		unsigned lProps = numPropsThrough(mkLit(v, false)), rProps =
-				numPropsThrough(mkLit(v, true));
-		if (lProps + rProps > 2)
-			return true;
-
 	}
 
 	// Delete and store old clauses:
@@ -630,11 +625,6 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 
 	if (!toPerform) {
 		printf("c Too many clauses... No preprocessing\n");
-	}
-	for(Var i = 0;i<nVars();++i)
-	{
-		if(value(i) == l_Undef && !isEliminated(i) && (numPropsThrough(mkLit(i,false)) > 4 && numPropsThrough(mkLit(i,true)) > 4))
-			setFrozen(i,true);
 	}
 
 	while (ok && !asynch_interrupt && ++countableMergeSz <= opt_elim_count_sz) {

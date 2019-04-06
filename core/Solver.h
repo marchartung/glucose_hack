@@ -203,7 +203,7 @@ protected:
 
     // Solver state:
     //
-    int lastIndexRed;
+    int 				lastIndexRed;
     bool                ok;               // If FALSE, the constraints are already unsatisfiable. No part of the solver state may be used!
     double              cla_inc;          // Amount to bump next clause with.
     vec<double>         activity;         // A heuristic measurement of the activity of a variable.

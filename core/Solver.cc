@@ -48,8 +48,8 @@ static const char* _certified = "CORE -- CERTIFIED UNSAT";
 
 static BoolOption opt_incremental(_cat, "incremental",
 		"Use incremental SAT solving", false);
-static DoubleOption opt_K(_cr, "K", "The constant used to force restart", 0.8,
-		DoubleRange(0, false, 1, false));
+static DoubleOption opt_K(_cr, "K", "The constant used to force restart", 1.0,
+		DoubleRange(0, false, 1, true));
 static DoubleOption opt_R(_cr, "R", "The constant used to block restart", 1.4,
 		DoubleRange(1, false, 5, false));
 static IntOption opt_size_lbd_queue(_cr, "szLBDQueue",
@@ -136,7 +136,7 @@ Solver::Solver() :
 				0), learnts_literals(0), max_literals(0), tot_literals(0), curRestart(
 				1)
 
-				, ok(true), cla_inc(1), var_inc(1), watches(WatcherDeleted(ca)), watchesBin(
+		, ok(true), cla_inc(1), var_inc(1), watches(WatcherDeleted(ca)), watchesBin(
 				WatcherDeleted(ca)), qhead(0), simpDB_assigns(-1), simpDB_props(
 				0), order_heap(VarOrderLt(activity)), progress_estimate(0), remove_satisfied(
 				true)
@@ -1025,14 +1025,27 @@ bool Solver::simplify() {
 	return true;
 }
 
+double luby(double y, int x) {
+
+	int size, seq;
+	for (size = 1, seq = 0; size < x + 1; seq++, size = 2 * size + 1)
+		;
+	while (size - 1 != x) {
+		size = (size - 1) >> 1;
+		seq--;
+		x = x % size;
+	}
+	return pow(y, seq);
+}
+
 bool Solver::lbdQueuesValid() const {
 	return lbdQueue1.isvalid() && lbdQueue2.isvalid();
 }
 
-unsigned   Solver::lbdQueueAverage  ()      const
-{
+unsigned Solver::lbdQueueAverage() const {
 	assert(lbdQueuesValid());
-	return std::min(lbdQueue2.getavg(),(lbdQueue1.getavg()+lbdQueue2.getavg())/2) ;
+	return std::min(lbdQueue2.getavg(),
+			(unsigned) (((lbdQueue1.getavg() + lbdQueue2.getavg()) / 2) * K));
 }
 
 /*_________________________________________________________________________________________________
@@ -1054,6 +1067,7 @@ lbool Solver::search(int nof_conflicts) {
 	int conflictC = 0;
 	vec<Lit> learnt_clause, selectors;
 	unsigned int nblevels, szWoutSelectors;
+	uint64_t blockedConflicts = 0;
 	bool blocked = false;
 	starts++;
 	for (;;) {
@@ -1085,17 +1099,16 @@ lbool Solver::search(int nof_conflicts) {
 
 			trailQueue.push(trail.size());
 			// BLOCK RESTART (CP 2012 paper)
-			if (conflictsRestarts > LOWER_BOUND_FOR_BLOCKING_RESTART
-					&& lbdQueue1.isvalid() && lbdQueue2.isvalid()
+			if (!blocked && conflictsRestarts > LOWER_BOUND_FOR_BLOCKING_RESTART
+					&& lbdQueuesValid()
 					&& trail.size() > R * trailQueue.getavg()) {
-				lbdQueue1.fastclear();
-				lbdQueue2.fastclear();
+				//lbdQueue1.fastclear();
+				//lbdQueue2.fastclear();
+				lastblockatrestart = starts;
+				blockedConflicts = conflicts + sizeLBDQueue*luby(2,nbstopsrestarts);
 				nbstopsrestarts++;
-				if (!blocked) {
-					lastblockatrestart = starts;
-					nbstopsrestartssame++;
-					blocked = true;
-				}
+				nbstopsrestartssame++;
+				blocked = true;
 			}
 
 			learnt_clause.clear();
@@ -1143,9 +1156,10 @@ lbool Solver::search(int nof_conflicts) {
 
 		} else {
 			// Our dynamic restart, see the SAT09 competition compagnion paper
-			if ((lbdQueuesValid()
+			if ((blockedConflicts < conflicts && lbdQueuesValid()
 					&& ((lbdQueueAverage()) > (sumLBD / conflictsRestarts)))) {
 				lbdQueue1.fastclear();
+				lbdQueue2.fastclear();
 				progress_estimate = progressEstimate();
 				int bt = 0;
 				if (incremental) { // DO NOT BACKTRACK UNTIL 0.. USELESS
