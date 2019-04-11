@@ -104,7 +104,7 @@ static DoubleOption opt_garbage_frac(_cat, "gc-frac",
 		0.20, DoubleRange(0, false, HUGE_VAL, false));
 
 BoolOption opt_certified(_certified, "certified",
-		"Certified UNSAT using DRUP format", false);
+		"Certified UNSAT using DRAT format", false);
 StringOption opt_certified_file(_certified, "certified-output",
 		"Certified UNSAT output file", "NULL");
 
@@ -125,16 +125,15 @@ Solver::Solver() :
 				opt_clause_decay), random_var_freq(opt_random_var_freq), random_seed(
 				opt_random_seed), ccmin_mode(opt_ccmin_mode), phase_saving(
 				opt_phase_saving), rnd_pol(false), rnd_init_act(
-				opt_rnd_init_act), garbage_frac(opt_garbage_frac), certifiedOutput(
-		NULL), certifiedUNSAT(opt_certified)
+				opt_rnd_init_act), garbage_frac(opt_garbage_frac), certifiedUNSAT(
+				opt_certified), certPrint(certifiedUNSAT,(!strcmp(opt_certified_file, "NULL")) ? "/dev/stdout" : opt_certified_file)
 		// Statistics: (formerly in 'SolverStats')
 		//
-				, nbRemovedClauses(0), nbReducedClauses(0), nbDL2(0), nbBin(0), nbUn(
-				0), nbReduceDB(0), solves(0), starts(0), decisions(0), rnd_decisions(
-				0), propagations(0), conflicts(0), conflictsRestarts(0), nbstopsrestarts(
-				0), nbstopsrestartssame(0), lastblockatrestart(0), dec_vars(0), clauses_literals(
-				0), learnts_literals(0), max_literals(0), tot_literals(0), curRestart(
-				1)
+		, nbRemovedClauses(0), nbReducedClauses(0), nbDL2(0), nbBin(0), nbUn(0), nbReduceDB(
+				0), solves(0), starts(0), decisions(0), rnd_decisions(0), propagations(
+				0), conflicts(0), conflictsRestarts(0), nbstopsrestarts(0), nbstopsrestartssame(
+				0), lastblockatrestart(0), dec_vars(0), clauses_literals(0), learnts_literals(
+				0), max_literals(0), tot_literals(0), curRestart(1)
 
 		, ok(true), cla_inc(1), var_inc(1), watches(WatcherDeleted(ca)), watchesBin(
 				WatcherDeleted(ca)), qhead(0), simpDB_assigns(-1), simpDB_props(
@@ -157,15 +156,6 @@ Solver::Solver() :
 	totalTime4Unsat = 0;
 	nbSatCalls = 0;
 	nbUnsatCalls = 0;
-
-	if (certifiedUNSAT) {
-		if (!strcmp(opt_certified_file, "NULL")) {
-			certifiedOutput = fopen("/dev/stdout", "wb");
-		} else {
-			certifiedOutput = fopen(opt_certified_file, "wb");
-		}
-		//    fprintf(certifiedOutput,"o proof DRUP\n");
-	}
 }
 
 Solver::~Solver() {
@@ -240,16 +230,8 @@ bool Solver::addClause_(vec<Lit>& ps) {
 	ps.shrink(i - j);
 
 	if (flag && (certifiedUNSAT)) {
-		for (i = j = 0, p = lit_Undef; i < ps.size(); i++)
-			fprintf(certifiedOutput, "%i ",
-					(var(ps[i]) + 1) * (-2 * sign(ps[i]) + 1));
-		fprintf(certifiedOutput, "0\n");
-
-		fprintf(certifiedOutput, "d ");
-		for (i = j = 0, p = lit_Undef; i < oc.size(); i++)
-			fprintf(certifiedOutput, "%i ",
-					(var(oc[i]) + 1) * (-2 * sign(oc[i]) + 1));
-		fprintf(certifiedOutput, "0\n");
+		certPrint.dumpAddClause(ps);
+		certPrint.dumpRemoveClause(oc);
 	}
 
 	if (ps.size() == 0)
@@ -316,13 +298,8 @@ void Solver::removeClause(CRef cr) {
 
 	Clause& c = ca[cr];
 
-	if (certifiedUNSAT) {
-		fprintf(certifiedOutput, "d ");
-		for (int i = 0; i < c.size(); i++)
-			fprintf(certifiedOutput, "%i ",
-					(var(c[i]) + 1) * (-2 * sign(c[i]) + 1));
-		fprintf(certifiedOutput, "0\n");
-	}
+	if (certifiedUNSAT)
+		certPrint.dumpRemoveClause(c);
 
 	detachClause(cr);
 	// Don't leave pointers to free'd memory!
@@ -1105,7 +1082,8 @@ lbool Solver::search(int nof_conflicts) {
 				//lbdQueue1.fastclear();
 				//lbdQueue2.fastclear();
 				lastblockatrestart = starts;
-				blockedConflicts = conflicts + sizeLBDQueue*luby(2,nbstopsrestarts);
+				blockedConflicts = conflicts
+						+ sizeLBDQueue * luby(2, nbstopsrestarts);
 				nbstopsrestarts++;
 				nbstopsrestartssame++;
 				blocked = true;
@@ -1126,13 +1104,8 @@ lbool Solver::search(int nof_conflicts) {
 
 			cancelUntil(backtrack_level);
 
-			if (certifiedUNSAT) {
-				for (int i = 0; i < learnt_clause.size(); i++)
-					fprintf(certifiedOutput, "%i ",
-							(var(learnt_clause[i]) + 1)
-									* (-2 * sign(learnt_clause[i]) + 1));
-				fprintf(certifiedOutput, "0\n");
-			}
+			if (certifiedUNSAT)
+				certPrint.dumpAddClause(learnt_clause);
 
 			if (learnt_clause.size() == 1) {
 				uncheckedEnqueue(learnt_clause[0]);
@@ -1329,8 +1302,7 @@ lbool Solver::solve_() {
 
 	if (certifiedUNSAT) { // Want certified output
 		if (status == l_False)
-			fprintf(certifiedOutput, "0\n");
-		fclose(certifiedOutput);
+			certPrint.dumpEmptyClause();
 	}
 
 	if (status == l_True) {

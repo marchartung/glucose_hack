@@ -38,6 +38,7 @@
 #include "utils/Options.h"
 #include "core/Dimacs.h"
 #include "simp/SimpSolver.h"
+#include "mtl/DratPrint.h"
 
 using namespace Glucose;
 IntOption verb("MAIN", "verb", "Verbosity level (0=silent, 1=some, 2=more).", 1,
@@ -116,6 +117,7 @@ static void SIGINT_exit(int signum) {
 // Main:
 
 int main(int argc, char** argv) {
+
 	try {
 		printf(
 				"c\nc This is glucose 3.0 --  based on MiniSAT (Many thanks to MiniSAT team)\nc Simplification mode is turned on\nc\n");
@@ -236,7 +238,7 @@ int main(int argc, char** argv) {
 
 		if (!S.okay()) {
 			if (S.certifiedUNSAT)
-				fprintf(S.certifiedOutput, "0\n"), fclose(S.certifiedOutput);
+				S.certPrint.dumpEmptyClause();
 			if (res != NULL)
 				fprintf(res, "UNSAT\n"), fclose(res);
 			if (S.verbosity > 0) {

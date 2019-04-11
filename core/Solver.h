@@ -36,6 +36,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "core/SolverTypes.h"
 #include "core/BoundedQueue.h"
 #include "core/Constants.h"
+#include "mtl/DratPrint.h"
 
 
 namespace Glucose {
@@ -163,8 +164,8 @@ public:
     double    garbage_frac;       // The fraction of wasted memory allowed before a garbage collection is triggered.
 
     // Certified UNSAT ( Thanks to Marijn Heule)
-    FILE*               certifiedOutput;
-    bool                certifiedUNSAT;
+    const bool          certifiedUNSAT;
+    DratPrint			certPrint;
 
     
     // Statistics: (read-only member variable)

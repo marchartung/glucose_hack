@@ -38,7 +38,7 @@ static BoolOption opt_use_rcheck(_cat, "rcheck",
 static BoolOption opt_use_elim(_cat, "elim", "Perform variable elimination.",
 		true);
 static BoolOption opt_enforce_simp(_cat, "enforce-simp",
-		"Enforce simplification.", true);
+		"Enforce simplification.", false);
 static BoolOption opt_use_simplification(_cat, "simp",
 		"Perform simplification before solving.", true);
 
@@ -155,12 +155,8 @@ bool SimpSolver::addClause_(vec<Lit>& ps) {
 	if (!Solver::addClause_(ps))
 		return false;
 
-	if (!parsing && certifiedUNSAT) {
-		for (int i = 0; i < ps.size(); i++)
-			fprintf(certifiedOutput, "%i ",
-					(var(ps[i]) + 1) * (-2 * sign(ps[i]) + 1));
-		fprintf(certifiedOutput, "0\n");
-	}
+	if (!parsing && certifiedUNSAT)
+		certPrint.dumpAddClause(ps);
 
 	if (use_simplification && clauses.size() == nclauses + 1) {
 		CRef cr = clauses.last();
@@ -213,25 +209,15 @@ bool SimpSolver::strengthenClause(CRef cr, Lit l) {
 	// if (!find(subsumption_queue, &c))
 	subsumption_queue.insert(cr);
 
-	if (certifiedUNSAT) {
-		for (int i = 0; i < c.size(); i++)
-			if (c[i] != l)
-				fprintf(certifiedOutput, "%i ",
-						(var(c[i]) + 1) * (-2 * sign(c[i]) + 1));
-		fprintf(certifiedOutput, "0\n");
-	}
+	if (certifiedUNSAT)
+		certPrint.dumpAddClauseExcludeLit(c, l);
 
 	if (c.size() == 2) {
 		removeClause(cr);
 		c.strengthen(l);
 	} else {
-		if (certifiedUNSAT) {
-			fprintf(certifiedOutput, "d ");
-			for (int i = 0; i < c.size(); i++)
-				fprintf(certifiedOutput, "%i ",
-						(var(c[i]) + 1) * (-2 * sign(c[i]) + 1));
-			fprintf(certifiedOutput, "0\n");
-		}
+		if (certifiedUNSAT)
+			certPrint.dumpRemoveClause(c);
 
 		detachClause(cr, true);
 		c.strengthen(l);
@@ -647,8 +633,7 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 	else if (!opt_use_simplification)
 		printf("c Preprocessing disabled\n");
 	else {
-		if(opt_clean_supsumption)
-		{
+		if (opt_clean_supsumption) {
 			subsumption_queue.clear();
 			n_touched = 0;
 
