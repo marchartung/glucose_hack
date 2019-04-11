@@ -48,6 +48,9 @@ static BoolOption opt_enable_touch_sub(_cat, "supsumption",
 		"Subsumption ist disabled", true);
 static BoolOption opt_clean_elim_vars(_cat, "clean-elimvars",
 		"Before simplification elim variables are unset.", false);
+static DoubleOption opt_simp_max_time(_cat, "simp-time",
+		"Time allowed to spend for simplifications.",
+		120.0, DoubleRange(0, false, HUGE_VAL, false));
 
 static IntOption opt_grow(_cat, "grow",
 		"Allow a variable elimination step to grow by a number of clauses.", 0);
@@ -73,7 +76,7 @@ SimpSolver::SimpSolver() :
 				opt_use_asymm), use_rcheck(opt_use_rcheck), use_elim(
 				opt_use_elim), merges(0), asymm_lits(0), eliminated_vars(0), elimorder(
 				1), countableMergeSz(1), use_simplification(
-				opt_use_simplification),elimStartT(cpuTime()),elimMaxTime(100.0), occurs(ClauseDeleted(ca)), elim_heap(
+				opt_use_simplification),elimStartT(cpuTime()),elimMaxTime(opt_simp_max_time), occurs(ClauseDeleted(ca)), elim_heap(
 				ElimLt(n_occ)), bwdsub_assigns(0), n_touched(0) {
 	vec<Lit> dummy(1, lit_Undef);
 	ca.extra_clause_field = true; // NOTE: must happen before allocating the dummy clause below.
@@ -314,11 +317,6 @@ bool SimpSolver::backwardSubsumptionCheck(bool verbose) {
 	assert(decisionLevel() == 0);
 
 	while (subsumption_queue.size() > 0 || bwdsub_assigns < trail.size()) {
-		if(cpuTime() - elimStartT > elimMaxTime)
-		{
-			cleanUpElim(true);
-			return true;
-		}
 		// Empty subsumption queue and return immediately on user-interrupt:
 		if (asynch_interrupt) {
 			subsumption_queue.clear();
@@ -378,6 +376,8 @@ bool SimpSolver::backwardSubsumptionCheck(bool verbose) {
 					if (var(l) == best)
 						j--;
 				}
+				if(((unsigned)j & 127u) == 0 && cpuTime() - elimStartT > elimMaxTime)
+					return true;
 			}
 	}
 
@@ -497,12 +497,6 @@ bool SimpSolver::eliminateVar(Var v) {
 	assert(!frozen[v]);
 	assert(!isEliminated(v));
 	assert(value(v) == l_Undef);
-
-	if(cpuTime() - elimStartT > elimMaxTime)
-	{
-		cleanUpElim(true);
-		return true;
-	}
 
 	// Split the occurrences into positive and negative:
 	//
@@ -654,6 +648,8 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 		while (ok && !asynch_interrupt
 				&& ++countableMergeSz <= opt_elim_count_sz && cpuTime() - elimStartT < elimMaxTime) {
 			eliminate(false);
+			if(countableMergeSz==2)
+				++countableMergeSz; // skip 3 merging. No benchmark found where this has an impact
 		}
 	}
 	cleanUpElim(turn_off_elim);
@@ -700,10 +696,9 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 
 		// printf("  ## (time = %6.2f s) ELIM: vars = %d\n", cpuTime(), elim_heap.size());
 		for (int cnt = 0; !elim_heap.empty(); cnt++) {
+			if(((cnt & 127u) == 0 && cpuTime() - elimStartT > elimMaxTime) || asynch_interrupt)
+				 goto cleanup;
 			Var elim = elim_heap.removeMin();
-
-			if (asynch_interrupt)
-				break;
 
 			if (isEliminated(elim) || value(elim) != l_Undef)
 				continue;
