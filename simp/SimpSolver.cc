@@ -657,6 +657,8 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 		}
 	}
 	cleanUpElim(turn_off_elim);
+	if(cpuTime() - elimStartT > elimMaxTime)
+		printf("c Preprocessing aborted due to time limit\n");
 	return ok;
 }
 
