@@ -20,15 +20,15 @@ public:
 	DratPrint(const bool shouldPrint, const std::string & proofFileName) :
 			proof(
 					(shouldPrint) ?
-							fopen(proofFileName.c_str(), "wb") : nullptr) {
+							fopen(proofFileName.c_str(), "wb") : NULL) {
 		last[0] = 5;
 		last[1] = 0;
 	}
 
 	~DratPrint() {
-		if (proof != nullptr) {
+		if (proof != NULL) {
 			fclose(proof);
-			proof = nullptr;
+			proof = NULL;
 		}
 	}
 
@@ -39,7 +39,7 @@ public:
 
 	template<typename VecType>
 	void dumpAddClauseExcludeLit(const VecType & c, const Lit l) {
-		assert(proof != nullptr);
+		assert(proof != NULL);
 		write('a');
 		for (int i = 0; i < c.size(); ++i)
 			if (c[i] != l)
@@ -57,7 +57,7 @@ public:
 	}
 	template<typename VecType>
 	void dumpClause(const int prefix, const VecType & c) {
-		assert(proof != nullptr);
+		assert(proof != NULL);
 		write(prefix);
 		for (int i = 0; i < c.size(); ++i)
 			dumpLit(c[i]);
