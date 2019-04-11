@@ -652,7 +652,7 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 		}
 
 		while (ok && !asynch_interrupt
-				&& ++countableMergeSz <= opt_elim_count_sz) {
+				&& ++countableMergeSz <= opt_elim_count_sz && cpuTime() - elimStartT < elimMaxTime) {
 			eliminate(false);
 		}
 	}
