@@ -73,7 +73,7 @@ SimpSolver::SimpSolver() :
 				opt_use_asymm), use_rcheck(opt_use_rcheck), use_elim(
 				opt_use_elim), merges(0), asymm_lits(0), eliminated_vars(0), elimorder(
 				1), countableMergeSz(1), use_simplification(
-				opt_use_simplification), occurs(ClauseDeleted(ca)), elim_heap(
+				opt_use_simplification),elimStartT(cpuTime()),elimMaxTime(100.0), occurs(ClauseDeleted(ca)), elim_heap(
 				ElimLt(n_occ)), bwdsub_assigns(0), n_touched(0) {
 	vec<Lit> dummy(1, lit_Undef);
 	ca.extra_clause_field = true; // NOTE: must happen before allocating the dummy clause below.
@@ -314,7 +314,11 @@ bool SimpSolver::backwardSubsumptionCheck(bool verbose) {
 	assert(decisionLevel() == 0);
 
 	while (subsumption_queue.size() > 0 || bwdsub_assigns < trail.size()) {
-
+		if(cpuTime() - elimStartT > elimMaxTime)
+		{
+			cleanUpElim(true);
+			return true;
+		}
 		// Empty subsumption queue and return immediately on user-interrupt:
 		if (asynch_interrupt) {
 			subsumption_queue.clear();
@@ -494,6 +498,12 @@ bool SimpSolver::eliminateVar(Var v) {
 	assert(!isEliminated(v));
 	assert(value(v) == l_Undef);
 
+	if(cpuTime() - elimStartT > elimMaxTime)
+	{
+		cleanUpElim(true);
+		return true;
+	}
+
 	// Split the occurrences into positive and negative:
 	//
 	const vec<CRef>& cls = occurs.lookup(v);
@@ -625,7 +635,7 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 		return false;
 	// Main simplification loop:
 	//
-
+	elimStartT = cpuTime();
 	int toPerform = clauses.size() <= 4800000 || opt_enforce_simp;
 
 	if (!toPerform)
@@ -717,7 +727,6 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 				ok = false;
 				goto cleanup;
 			}
-
 			checkGarbage(simp_garbage_frac);
 		}
 

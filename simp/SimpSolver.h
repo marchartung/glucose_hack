@@ -128,6 +128,8 @@ class SimpSolver : public Solver {
     int                 elimorder;
     int					countableMergeSz;
     bool                use_simplification;
+    double				elimStartT;
+    const double 		elimMaxTime;
     vec<uint32_t>       elimclauses;
     vec<char>           touched;
     OccLists<Var, vec<CRef>, ClauseDeleted>
