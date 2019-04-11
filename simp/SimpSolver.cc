@@ -37,6 +37,8 @@ static BoolOption opt_use_rcheck(_cat, "rcheck",
 		"Check if a clause is already implied. (costly)", false);
 static BoolOption opt_use_elim(_cat, "elim", "Perform variable elimination.",
 		true);
+static BoolOption opt_use_simplification(_cat, "simp", "Perform simplification before solving.",
+		true);
 static IntOption opt_grow(_cat, "grow",
 		"Allow a variable elimination step to grow by a number of clauses.", 0);
 static IntOption opt_clause_lim(_cat, "cl-lim",
@@ -60,7 +62,7 @@ SimpSolver::SimpSolver() :
 				opt_subsumption_lim), simp_garbage_frac(opt_simp_garbage_frac), use_asymm(
 				opt_use_asymm), use_rcheck(opt_use_rcheck), use_elim(
 				opt_use_elim), merges(0), asymm_lits(0), eliminated_vars(0), elimorder(
-				1), countableMergeSz(1), use_simplification(true), occurs(
+				1), countableMergeSz(1), use_simplification(opt_use_simplification), occurs(
 				ClauseDeleted(ca)), elim_heap(ElimLt(n_occ)), bwdsub_assigns(0), n_touched(
 				0) {
 	vec<Lit> dummy(1, lit_Undef);
