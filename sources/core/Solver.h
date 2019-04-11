@@ -36,6 +36,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "core/SolverTypes.h"
 #include "core/BoundedQueue.h"
 #include "core/Constants.h"
+#include "mtl/DratPrint.h"
 
 
 namespace Glucose {
@@ -139,7 +140,7 @@ public:
     // Constants For restarts
     double    K;
     double    R;
-    double    sizeLBDQueue;
+    unsigned    sizeLBDQueue;
     double    sizeTrailQueue;
 
     // Constants for reduce DB
@@ -163,8 +164,8 @@ public:
     double    garbage_frac;       // The fraction of wasted memory allowed before a garbage collection is triggered.
 
     // Certified UNSAT ( Thanks to Marijn Heule)
-    FILE*               certifiedOutput;
-    bool                certifiedUNSAT;
+    const bool          certifiedUNSAT;
+    DratPrint			certPrint;
 
     
     // Statistics: (read-only member variable)
@@ -203,7 +204,7 @@ protected:
 
     // Solver state:
     //
-    int lastIndexRed;
+    int 				lastIndexRed;
     bool                ok;               // If FALSE, the constraints are already unsatisfiable. No part of the solver state may be used!
     double              cla_inc;          // Amount to bump next clause with.
     vec<double>         activity;         // A heuristic measurement of the activity of a variable.
@@ -240,7 +241,7 @@ protected:
 
     int nbclausesbeforereduce;            // To know when it is time to reduce clause database
     
-    bqueue<unsigned int> trailQueue,lbdQueue; // Bounded queues for restarts.
+    bqueue<unsigned int> trailQueue,lbdQueue1,lbdQueue2; // Bounded queues for restarts.
     float sumLBD; // used to compute the global average of LBD. Restarts...
     int sumAssumptions;
 
@@ -316,6 +317,8 @@ protected:
 
     // Misc:
     //
+    bool	 lbdQueuesValid   ()      const;
+    unsigned   lbdQueueAverage  ()      const;
     int      decisionLevel    ()      const; // Gives the current decisionlevel.
     uint32_t abstractLevel    (Var x) const; // Used to represent an abstraction of sets of decision levels.
     CRef     reason           (Var x) const;

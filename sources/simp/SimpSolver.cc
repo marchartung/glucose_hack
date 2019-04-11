@@ -37,13 +37,28 @@ static BoolOption opt_use_rcheck(_cat, "rcheck",
 		"Check if a clause is already implied. (costly)", false);
 static BoolOption opt_use_elim(_cat, "elim", "Perform variable elimination.",
 		true);
+static BoolOption opt_enforce_simp(_cat, "enforce-simp",
+		"Enforce simplification.", false);
+static BoolOption opt_use_simplification(_cat, "simp",
+		"Perform simplification before solving.", true);
+
+static BoolOption opt_clean_supsumption(_cat, "clean-sup",
+		"Before simplification supsumption queue is emptied.", false);
+static BoolOption opt_enable_touch_sub(_cat, "supsumption",
+		"Subsumption ist disabled", true);
+static BoolOption opt_clean_elim_vars(_cat, "clean-elimvars",
+		"Before simplification elim variables are unset.", false);
+static DoubleOption opt_simp_max_time(_cat, "simp-time",
+		"Time allowed to spend for simplifications.",
+		120.0, DoubleRange(0, false, HUGE_VAL, false));
+
 static IntOption opt_grow(_cat, "grow",
 		"Allow a variable elimination step to grow by a number of clauses.", 0);
 static IntOption opt_clause_lim(_cat, "cl-lim",
 		"Variables are not eliminated if it produces a resolvent with a length above this limit. -1 means no limit",
 		INT32_MAX, IntRange(-1, INT32_MAX));
 static IntOption opt_elim_count_sz(_cat, "cl-elim-sz",
-		"clause length which counted as merged clauses in var elimination", 2,
+		"clause length which counted as merged clauses in var elimination", 7,
 		IntRange(2, INT32_MAX));
 static IntOption opt_subsumption_lim(_cat, "sub-lim",
 		"Do not check if subsumption against a clause larger than this. -1 means no limit.",
@@ -60,9 +75,9 @@ SimpSolver::SimpSolver() :
 				opt_subsumption_lim), simp_garbage_frac(opt_simp_garbage_frac), use_asymm(
 				opt_use_asymm), use_rcheck(opt_use_rcheck), use_elim(
 				opt_use_elim), merges(0), asymm_lits(0), eliminated_vars(0), elimorder(
-				1), countableMergeSz(1), use_simplification(true), occurs(
-				ClauseDeleted(ca)), elim_heap(ElimLt(n_occ)), bwdsub_assigns(0), n_touched(
-				0) {
+				1), countableMergeSz(1), use_simplification(
+				opt_use_simplification),elimStartT(cpuTime()),elimMaxTime(opt_simp_max_time), occurs(ClauseDeleted(ca)), elim_heap(
+				ElimLt(n_occ)), bwdsub_assigns(0), n_touched(0) {
 	vec<Lit> dummy(1, lit_Undef);
 	ca.extra_clause_field = true; // NOTE: must happen before allocating the dummy clause below.
 	bwdsub_tmpunit = ca.alloc(dummy);
@@ -83,7 +98,8 @@ Var SimpSolver::newVar(bool sign, bool dvar) {
 		n_occ.push(0);
 		occurs.init(v);
 		touched.push(0);
-		elim_heap.insert(v);
+		if (!opt_clean_elim_vars)
+			elim_heap.insert(v);
 	}
 	return v;
 }
@@ -142,12 +158,8 @@ bool SimpSolver::addClause_(vec<Lit>& ps) {
 	if (!Solver::addClause_(ps))
 		return false;
 
-	if (!parsing && certifiedUNSAT) {
-		for (int i = 0; i < ps.size(); i++)
-			fprintf(certifiedOutput, "%i ",
-					(var(ps[i]) + 1) * (-2 * sign(ps[i]) + 1));
-		fprintf(certifiedOutput, "0\n");
-	}
+	if (!parsing && certifiedUNSAT)
+		certPrint.dumpAddClause(ps);
 
 	if (use_simplification && clauses.size() == nclauses + 1) {
 		CRef cr = clauses.last();
@@ -159,12 +171,18 @@ bool SimpSolver::addClause_(vec<Lit>& ps) {
 		// be checked twice unnecessarily. This is an unfortunate
 		// consequence of how backward subsumption is used to mimic
 		// forward subsumption.
-		subsumption_queue.insert(cr);
+		bool useTandS = opt_enable_touch_sub;
+
+		if (useTandS)
+			subsumption_queue.insert(cr);
 		for (int i = 0; i < c.size(); i++) {
 			occurs[var(c[i])].push(cr);
 			n_occ[toInt(c[i])]++;
-			touched[var(c[i])] = 1;
-			n_touched++;
+
+			if (useTandS) {
+				touched[var(c[i])] = 1;
+				n_touched++;
+			}
 			if (elim_heap.inHeap(var(c[i])))
 				elim_heap.increase(var(c[i]));
 		}
@@ -194,25 +212,15 @@ bool SimpSolver::strengthenClause(CRef cr, Lit l) {
 	// if (!find(subsumption_queue, &c))
 	subsumption_queue.insert(cr);
 
-	if (certifiedUNSAT) {
-		for (int i = 0; i < c.size(); i++)
-			if (c[i] != l)
-				fprintf(certifiedOutput, "%i ",
-						(var(c[i]) + 1) * (-2 * sign(c[i]) + 1));
-		fprintf(certifiedOutput, "0\n");
-	}
+	if (certifiedUNSAT)
+		certPrint.dumpAddClauseExcludeLit(c, l);
 
 	if (c.size() == 2) {
 		removeClause(cr);
 		c.strengthen(l);
 	} else {
-		if (certifiedUNSAT) {
-			fprintf(certifiedOutput, "d ");
-			for (int i = 0; i < c.size(); i++)
-				fprintf(certifiedOutput, "%i ",
-						(var(c[i]) + 1) * (-2 * sign(c[i]) + 1));
-			fprintf(certifiedOutput, "0\n");
-		}
+		if (certifiedUNSAT)
+			certPrint.dumpRemoveClause(c);
 
 		detachClause(cr, true);
 		c.strengthen(l);
@@ -309,7 +317,6 @@ bool SimpSolver::backwardSubsumptionCheck(bool verbose) {
 	assert(decisionLevel() == 0);
 
 	while (subsumption_queue.size() > 0 || bwdsub_assigns < trail.size()) {
-
 		// Empty subsumption queue and return immediately on user-interrupt:
 		if (asynch_interrupt) {
 			subsumption_queue.clear();
@@ -369,6 +376,8 @@ bool SimpSolver::backwardSubsumptionCheck(bool verbose) {
 					if (var(l) == best)
 						j--;
 				}
+				if(((unsigned)j & 127u) == 0 && cpuTime() - elimStartT > elimMaxTime)
+					return true;
 			}
 	}
 
@@ -528,11 +537,6 @@ bool SimpSolver::eliminateVar(Var v) {
 					return true;
 				}
 		}
-		unsigned lProps = numPropsThrough(mkLit(v, false)), rProps =
-				numPropsThrough(mkLit(v, true));
-		if (lProps + rProps > 2)
-			return true;
-
 	}
 
 	// Delete and store old clauses:
@@ -625,22 +629,32 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 		return false;
 	// Main simplification loop:
 	//
+	elimStartT = cpuTime();
+	int toPerform = clauses.size() <= 4800000 || opt_enforce_simp;
 
-	int toPerform = clauses.size() <= 4800000;
-
-	if (!toPerform) {
+	if (!toPerform)
 		printf("c Too many clauses... No preprocessing\n");
-	}
-	for(Var i = 0;i<nVars();++i)
-	{
-		if(value(i) == l_Undef && !isEliminated(i) && (numPropsThrough(mkLit(i,false)) > 4 && numPropsThrough(mkLit(i,true)) > 4))
-			setFrozen(i,true);
-	}
+	else if (!opt_use_simplification)
+		printf("c Preprocessing disabled\n");
+	else {
+		if (opt_clean_supsumption) {
+			subsumption_queue.clear();
+			n_touched = 0;
 
-	while (ok && !asynch_interrupt && ++countableMergeSz <= opt_elim_count_sz) {
-		eliminate(false);
+			for (int i = 0; i < touched.size(); i++)
+				touched[i] = 0;
+		}
+
+		while (ok && !asynch_interrupt
+				&& ++countableMergeSz <= opt_elim_count_sz && cpuTime() - elimStartT < elimMaxTime) {
+			eliminate(false);
+			if(countableMergeSz==2)
+				++countableMergeSz; // skip 3 merging. No benchmark found where this has an impact
+		}
 	}
 	cleanUpElim(turn_off_elim);
+	if(cpuTime() - elimStartT > elimMaxTime)
+		printf("c Preprocessing aborted due to time limit\n");
 	return ok;
 }
 
@@ -650,25 +664,18 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 	else if (!use_simplification)
 		return true;
 
-	if (elim_heap.empty()) {
+	if (elim_heap.empty() && !opt_clean_elim_vars) {
 		for (Var i = 0; i < nVars(); ++i)
 			if (!isEliminated(i) && value(i) == l_Undef && !frozen[i]) {
 				elim_heap.insert(i);
 			}
 	}
 
-	// Main simplification loop:
-	//
+// Main simplification loop:
+//
 
-	int toPerform = clauses.size() <= 4800000;
-
-	if (!toPerform) {
-		printf("c Too many clauses... No preprocessing\n");
-	}
-
-	while (toPerform
-			&& (n_touched > 0 || bwdsub_assigns < trail.size()
-					|| elim_heap.size() > 0)) {
+	while ((n_touched > 0 || bwdsub_assigns < trail.size()
+			|| elim_heap.size() > 0)) {
 
 		gatherTouchedClauses();
 		// printf("  ## (time = %6.2f s) BWD-SUB: queue = %d, trail = %d\n", cpuTime(), subsumption_queue.size(), trail.size() - bwdsub_assigns);
@@ -689,10 +696,9 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 
 		// printf("  ## (time = %6.2f s) ELIM: vars = %d\n", cpuTime(), elim_heap.size());
 		for (int cnt = 0; !elim_heap.empty(); cnt++) {
+			if(((cnt & 127u) == 0 && cpuTime() - elimStartT > elimMaxTime) || asynch_interrupt)
+				 goto cleanup;
 			Var elim = elim_heap.removeMin();
-
-			if (asynch_interrupt)
-				break;
 
 			if (isEliminated(elim) || value(elim) != l_Undef)
 				continue;
@@ -718,7 +724,6 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 				ok = false;
 				goto cleanup;
 			}
-
 			checkGarbage(simp_garbage_frac);
 		}
 
@@ -735,7 +740,7 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 }
 
 void SimpSolver::cleanUpElim(bool turn_off_elim, bool full) {
-	// If no more simplification is needed, free all simplification-related data structures:
+// If no more simplification is needed, free all simplification-related data structures:
 	if (turn_off_elim) {
 		touched.clear(true);
 		occurs.clear(true);
@@ -773,27 +778,27 @@ void SimpSolver::relocAll(ClauseAllocator& to) {
 	if (!use_simplification)
 		return;
 
-	// All occurs lists:
-	//
+// All occurs lists:
+//
 	for (int i = 0; i < nVars(); i++) {
 		vec<CRef>& cs = occurs[i];
 		for (int j = 0; j < cs.size(); j++)
 			ca.reloc(cs[j], to);
 	}
 
-	// Subsumption queue:
-	//
+// Subsumption queue:
+//
 	for (int i = 0; i < subsumption_queue.size(); i++)
 		ca.reloc(subsumption_queue[i], to);
 
-	// Temporary clause:
-	//
+// Temporary clause:
+//
 	ca.reloc(bwdsub_tmpunit, to);
 }
 
 void SimpSolver::garbageCollect() {
-	// Initialize the next region to a size corresponding to the estimated utilization degree. This
-	// is not precise but should avoid some unnecessary reallocations for the new region:
+// Initialize the next region to a size corresponding to the estimated utilization degree. This
+// is not precise but should avoid some unnecessary reallocations for the new region:
 	ClauseAllocator to(ca.size() - ca.wasted());
 
 	cleanUpClauses();

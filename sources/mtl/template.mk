@@ -44,14 +44,14 @@ libr:	lib$(LIB)_release.a
 %.o:			CFLAGS +=$(COPTIMIZE) -g -D DEBUG
 %.op:			CFLAGS +=$(COPTIMIZE) -pg -g -D NDEBUG
 %.od:			CFLAGS +=-O0 -g -D DEBUG
-%.or:			CFLAGS +=$(COPTIMIZE) -g -D NDEBUG
+%.or:			CFLAGS +=$(COPTIMIZE) -flto -fwhole-program -g -D NDEBUG
 
 ## Link options
 $(EXEC):		LFLAGS += -g
 $(EXEC)_profile:	LFLAGS += -g -pg
 $(EXEC)_debug:		LFLAGS += -g
 #$(EXEC)_release:	LFLAGS += ...
-$(EXEC)_static:		LFLAGS += --static
+$(EXEC)_static:		LFLAGS += --static -flto -fwhole-program
 
 ## Dependencies
 $(EXEC):		$(COBJS)
