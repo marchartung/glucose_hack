@@ -113,9 +113,9 @@ int main(int argc, char** argv)
         Solver S;
         double initial_time = cpuTime();
 
-        S.verbosity = verb;
-        S.verbEveryConflicts = vv;
-	S.showModel = mod;
+        //S.verbosity = verb;
+        S.verbEveryConflicts = 10000;
+	    //S.showModel = mod;
         solver = &S;
         // Use signal handlers that forcibly quit until the solver will be able to respond to
         // interrupts:

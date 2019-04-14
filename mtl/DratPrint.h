@@ -21,8 +21,6 @@ public:
 			proof(
 					(shouldPrint) ?
 							fopen(proofFileName.c_str(), "wb") : NULL) {
-		last[0] = 5;
-		last[1] = 0;
 	}
 
 	~DratPrint() {
@@ -74,7 +72,6 @@ public:
 	}
 
 private:
-	unsigned char last[2];
 	FILE * proof;
 
 	inline void write(const unsigned & c) {

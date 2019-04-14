@@ -134,7 +134,8 @@ class Clause {
       unsigned learnt    : 1;
       unsigned has_extra : 1;
       unsigned reloced   : 1;
-      unsigned lbd       : 26;
+      unsigned vivified  : 1;
+      unsigned lbd       : 25;
       unsigned canbedel  : 1;
       unsigned size      : 32;
       unsigned szWithoutSelectors : 32;
@@ -152,6 +153,7 @@ class Clause {
         header.has_extra = use_extra;
         header.reloced   = 0;
         header.size      = ps.size();
+        header.vivified = false;
 	header.lbd = 0;
 	header.canbedel = 1;
         for (int i = 0; i < ps.size(); i++) 
@@ -185,6 +187,9 @@ public:
     bool         reloced     ()      const   { return header.reloced; }
     CRef         relocation  ()      const   { return data[0].rel; }
     void         relocate    (CRef c)        { header.reloced = 1; data[0].rel = c; }
+
+    void setVivified(const bool in)			 { header.vivified = in; }
+    bool isVivified() const 				 { return header.vivified; }
 
     // NOTE: somewhat unsafe to change the clause in-place! Must manually call 'calcAbstraction' afterwards for
     //       subsumption operations to behave correctly.

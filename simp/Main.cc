@@ -51,7 +51,7 @@ BoolOption pre("MAIN", "pre", "Completely turn on/off any preprocessing.",
 StringOption dimacs("MAIN", "dimacs",
 		"If given, stop after preprocessing and write the result to this file.");
 IntOption cpu_lim("MAIN", "cpu-lim", "Limit on CPU time allowed in seconds.\n",
-		INT32_MAX, IntRange(0, INT32_MAX));
+		5000, IntRange(0, INT32_MAX));
 IntOption mem_lim("MAIN", "mem-lim", "Limit on memory usage in megabytes.\n",
 		INT32_MAX, IntRange(0, INT32_MAX));
 
@@ -71,6 +71,8 @@ void printStats(Solver& solver) {
 	printf("c nb learnts DL2        : %lld\n", solver.nbDL2);
 	printf("c nb learnts size 2     : %lld\n", solver.nbBin);
 	printf("c nb learnts size 1     : %lld\n", solver.nbUn);
+	printf("c vivifications			: %lld/%lld (%.2f %% reduced per clause)\n", solver.numSuccVivs,solver.numSuccVivs+solver.numFailVivs,100.0*solver.vivEfficiencySum/solver.numSuccVivs);
+	printf("c vivification props    : %lld\n", solver.viviPropagations);
 
 	printf("c conflicts             : %-12"PRIu64"   (%.0f /sec)\n",
 			solver.conflicts, solver.conflicts / cpu_time);
@@ -144,10 +146,10 @@ int main(int argc, char** argv) {
 		S.parsing = 1;
 		if (!pre)
 			S.eliminate(true);
-
-		S.verbosity = verb;
+//
+//		S.verbosity = verb;
 		S.verbEveryConflicts = vv;
-		S.showModel = mod;
+//		S.showModel = mod;
 		solver = &S;
 		// Use signal handlers that forcibly quit until the solver will be able to respond to
 		// interrupts:
