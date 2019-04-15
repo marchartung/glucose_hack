@@ -126,7 +126,7 @@ Solver::Solver() :
 				opt_random_seed), ccmin_mode(opt_ccmin_mode), phase_saving(
 				opt_phase_saving), rnd_pol(false), rnd_init_act(
 				opt_rnd_init_act), garbage_frac(opt_garbage_frac), certifiedUNSAT(
-				true), certPrint(certifiedUNSAT,
+						opt_certified), certPrint(certifiedUNSAT,
 				(!strcmp(opt_certified_file, "NULL")) ?
 						"/dev/stdout" : opt_certified_file)
 						// Statistics: (formerly in 'SolverStats')
@@ -1297,7 +1297,7 @@ lbool Solver::solve_() {
 
 	solves++;
 
-	lbool status = l_Undef;
+	lbool result = l_Undef;
 	if (!incremental && verbosity >= 1) {
 		printf(
 				"c ========================================[ MAGIC CONSTANTS ]==============================================\n");
@@ -1342,8 +1342,8 @@ lbool Solver::solve_() {
 
 	// Search:
 	int curr_restarts = 0;
-	while (status == l_Undef) {
-		status = search(0); // the parameter is useless in glucose, kept to allow modifications
+	while (result == l_Undef) {
+		result = search(0); // the parameter is useless in glucose, kept to allow modifications
 
 		if (!withinBudget())
 			break;
@@ -1355,31 +1355,31 @@ lbool Solver::solve_() {
 				"c =========================================================================================================\n");
 
 	if (certifiedUNSAT) { // Want certified output
-		if (status == l_False)
+		if (result == l_False)
 			certPrint.dumpEmptyClause();
 	}
 
-	if (status == l_True) {
+	if (result == l_True) {
 		// Extend & copy model:
 		model.growTo(nVars());
 		for (int i = 0; i < nVars(); i++)
 			model[i] = value(i);
-	} else if (status == l_False && conflict.size() == 0)
+	} else if (result == l_False && conflict.size() == 0)
 		ok = false;
 
 	cancelUntil(0);
 
 	double finalTime = cpuTime();
-	if (status == l_True) {
+	if (result == l_True) {
 		nbSatCalls++;
 		totalTime4Sat += (finalTime - curTime);
 	}
-	if (status == l_False) {
+	if (result == l_False) {
 		nbUnsatCalls++;
 		totalTime4Unsat += (finalTime - curTime);
 	}
 
-	return status;
+	return result;
 }
 
 //=================================================================================================

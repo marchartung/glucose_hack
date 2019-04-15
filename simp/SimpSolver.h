@@ -166,6 +166,8 @@ class SimpSolver : public Solver {
     void          relocAll                 (ClauseAllocator& to);
     void		  cleanUpElim(bool turn_off_elim, bool full = false);
     unsigned	  numPropsThrough(const Lit l);
+
+    bool switchOnElimination();
 };
 
 

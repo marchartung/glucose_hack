@@ -122,9 +122,118 @@ lbool SimpSolver::solve_(bool do_simp, bool turn_off_simp) {
 		result = lbool(eliminate(turn_off_simp));
 	}
 
-	if (result == l_True)
-		result = Solver::solve_();
-	else if (verbosity >= 1)
+	if (result == l_True) {
+		if (incremental && certifiedUNSAT) {
+			printf(
+					"Can not use incremental and certified unsat in the same time\n");
+			exit(-1);
+		}
+		model.clear();
+		conflict.clear();
+		if (!ok)
+			return l_False;
+		double curTime = cpuTime();
+
+		solves++;
+
+		result = l_Undef;
+		if (!incremental && verbosity >= 1) {
+			printf(
+					"c ========================================[ MAGIC CONSTANTS ]==============================================\n");
+			printf(
+					"c | Constants are supposed to work well together! :-)                                                      |\n");
+			printf(
+					"c | however, if you find better choices, please let us known...                                           |\n");
+			printf(
+					"c |-------------------------------------------------------------------------------------------------------|\n");
+			printf(
+					"c |                                |                                |                                     |\n");
+			printf(
+					"c | - Restarts:                    | - Reduce Clause DB:            | - Minimize Asserting:               |\n");
+			printf(
+					"c |   * LBD Queue    : %6d      |   * First     : %6d         |    * size < %3d                     |\n",
+					lbdQueue1.maxSize(), nbclausesbeforereduce,
+					lbSizeMinimizingClause);
+			printf(
+					"c |   * Trail  Queue : %6d      |   * Inc       : %6d         |    * lbd  < %3d                     |\n",
+					trailQueue.maxSize(), incReduceDB, lbLBDMinimizingClause);
+			printf(
+					"c |   * K            : %6.2f      |   * Special   : %6d         |                                     |\n",
+					K, specialIncReduceDB);
+			printf(
+					"c |   * R            : %6.2f      |   * Protected :  (lbd)< %2d     |                                     |\n",
+					R, lbLBDFrozenClause);
+			printf(
+					"c |                                |                                |                                     |\n");
+			printf(
+					"c ==================================[ Search Statistics (every %6d conflicts) ]=========================\n",
+					verbEveryConflicts);
+			printf(
+					"c |                                                                                                       |\n");
+
+			printf(
+					"c |          RESTARTS           |          ORIGINAL         |              LEARNT              | Vivific\% |\n");
+			printf(
+					"c |       NB   Blocked  Avg Cfc |    Vars  Clauses Literals |   Red   Learnts    LBD2  Removed |          |\n");
+			printf(
+					"c =========================================================================================================\n");
+		}
+
+		// Search:
+		int curr_restarts = 0;
+		int lastNumLearnts = 0;
+		while (result == l_Undef) {
+			if (lastNumLearnts > learnts.size()
+					&& learnts.size() > std::max(clauses.size() / 2, 50000)) {
+				assert(decisionLevel() == 0);
+				for (int i = 0; i < learnts.size(); ++i)
+					clauses.push(learnts[i]);
+				learnts.clear();
+				result = lbool(switchOnElimination());
+				countableMergeSz = 1;
+				result = lbool(eliminate(true));
+				lastNumLearnts = 0;
+			} else {
+				lastNumLearnts = learnts.size();
+				result = search(0); // the parameter is useless in glucose, kept to allow modifications
+				curr_restarts++;
+			}
+			if (!withinBudget())
+				break;
+		}
+
+		if (!incremental && verbosity >= 1)
+			printf(
+					"c =========================================================================================================\n");
+
+		if (certifiedUNSAT) { // Want certified output
+			if (result == l_False)
+				certPrint.dumpEmptyClause();
+		}
+
+		if (result == l_True) {
+			// Extend & copy model:
+			model.growTo(nVars());
+			for (int i = 0; i < nVars(); i++)
+				model[i] = value(i);
+		} else if (result == l_False && conflict.size() == 0)
+			ok = false;
+
+		cancelUntil(0);
+
+		double finalTime = cpuTime();
+		if (result == l_True) {
+			nbSatCalls++;
+			totalTime4Sat += (finalTime - curTime);
+		}
+		if (result == l_False) {
+			nbUnsatCalls++;
+			totalTime4Unsat += (finalTime - curTime);
+		}
+
+		return result;
+
+	} else if (verbosity >= 1)
 		printf(
 				"===============================================================================\n");
 
@@ -171,6 +280,39 @@ bool SimpSolver::addClause_(vec<Lit>& ps) {
 			occurs[var(c[i])].push(cr);
 			n_occ[toInt(c[i])]++;
 
+			touched[var(c[i])] = 1;
+			n_touched++;
+
+			if (elim_heap.inHeap(var(c[i])))
+				elim_heap.increase(var(c[i]));
+		}
+	}
+
+	return true;
+}
+
+bool SimpSolver::switchOnElimination() {
+	assert(learnts.size() == 0);
+	use_simplification = true;
+	lbool res = l_False;
+	if (!simplify())
+		return false;
+	res = l_Undef;
+	n_touched = 0;
+	n_occ.growTo(nVars(), -1);
+	touched.growTo(nVars(), 0);
+	for (Var i = 0; i < nVars(); ++i)
+		if (assigns[i] == l_Undef) {
+			n_occ[i] = 0;
+			occurs.init(i);
+			elim_heap.insert(i);
+		}
+	for (int i = 0; i < clauses.size(); ++i) {
+		subsumption_queue.insert(clauses[i]);
+		const Clause & c = ca[clauses[i]];
+		for (int j = 0; j < c.size(); ++j) {
+			occurs[var(c[i])].push(clauses[i]);
+			++n_occ[toInt(c[i])];
 			touched[var(c[i])] = 1;
 			n_touched++;
 
