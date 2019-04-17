@@ -83,8 +83,8 @@ public:
     T&       last  (void)              { return data[sz-1]; }
 
     // Vector interface:
-    const T& operator [] (int index) const { return data[index]; }
-    T&       operator [] (int index)       { return data[index]; }
+    const T& operator [] (int index) const { assert(index < sz); return data[index]; }
+    T&       operator [] (int index)       { assert(index < sz); return data[index]; }
 
     // Duplicatation (preferred instead):
     void copyTo(vec<T>& copy) const { copy.clear(); copy.growTo(sz); for (int i = 0; i < sz; i++) copy[i] = data[i]; }
@@ -96,7 +96,10 @@ template<class T>
 void vec<T>::capacity(int min_cap) {
     if (cap >= min_cap) return;
     int add = imax((min_cap - cap + 1) & ~1, ((cap >> 1) + 2) & ~1);   // NOTE: grow by approximately 3/2
-    if (add > INT_MAX - cap || ((data = (T*)::realloc(data, (cap += add) * sizeof(T))) == NULL) && errno == ENOMEM)
+    cap += add;
+    data = (T*)realloc(data, cap * sizeof(T));
+    if(add > INT_MAX - cap || (data == NULL && errno == ENOMEM))
+    //if (add > INT_MAX - cap || ((data = (T*)::realloc(data, (cap += add) * sizeof(T))) == NULL) && errno == ENOMEM)
         throw OutOfMemoryException();
  }
 

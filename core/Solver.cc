@@ -253,6 +253,7 @@ bool Solver::addClause_(vec<Lit>& ps) {
 		attachClause(cr);
 	}
 
+
 	return true;
 }
 
@@ -1064,6 +1065,14 @@ unsigned Solver::lbdQueueAverage() const {
 	assert(lbdQueuesValid());
 	return std::min(lbdQueue2.getavg(),
 			(unsigned) (((lbdQueue1.getavg() + lbdQueue2.getavg()) / 2) * K));
+}
+
+
+void Solver::checkWatcher(const Lit l)
+{
+	vec<Watcher>& ws = watches[l];
+	for(int i=0;i<ws.size();++i)
+		assert(ca[ws[i].cref].contains(~l));
 }
 
 /*_________________________________________________________________________________________________

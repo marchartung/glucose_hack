@@ -61,7 +61,7 @@ class SimpSolver : public Solver {
     bool    solve       (Lit p       ,        bool do_simp = true, bool turn_off_simp = false);       
     bool    solve       (Lit p, Lit q,        bool do_simp = true, bool turn_off_simp = false);
     bool    solve       (Lit p, Lit q, Lit r, bool do_simp = true, bool turn_off_simp = false);
-    bool    eliminate   (bool turn_off_elim = false);  // Perform variable elimination based simplification. 
+    bool    eliminate   (bool turn_off_elim = false, bool elimVars = true);  // Perform variable elimination based simplification.
     bool    eliminateZib   (bool turn_off_elim = false);  // Perform variable elimination based simplification.
 
     // Memory managment:

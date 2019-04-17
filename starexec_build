@@ -1,4 +1,6 @@
 cd simp
+scl enable devtoolset-7 bash
+g++ --version
 make rs
 cp glucose_static ../bin/glucose_static
 

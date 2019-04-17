@@ -21,7 +21,6 @@
 #include "mtl/Sort.h"
 #include "simp/SimpSolver.h"
 #include "utils/System.h"
-#include <iostream>
 #include <set>
 
 using namespace Glucose;
@@ -52,7 +51,7 @@ static IntOption opt_clause_lim(_cat, "cl-lim",
 		"Variables are not eliminated if it produces a resolvent with a length above this limit. -1 means no limit",
 		INT32_MAX, IntRange(-1, INT32_MAX));
 static IntOption opt_elim_count_sz(_cat, "cl-elim-sz",
-		"clause length which counted as merged clauses in var elimination", 7,
+		"clause length which counted as merged clauses in var elimination", 5,
 		IntRange(2, INT32_MAX));
 static IntOption opt_subsumption_lim(_cat, "sub-lim",
 		"Do not check if subsumption against a clause larger than this. -1 means no limit.",
@@ -182,17 +181,24 @@ lbool SimpSolver::solve_(bool do_simp, bool turn_off_simp) {
 		// Search:
 		int curr_restarts = 0;
 		int lastNumLearnts = 0;
+		int corrector = 0;
 		while (result == l_Undef) {
 			if (lastNumLearnts > learnts.size()
-					&& learnts.size() > std::max(clauses.size() / 2, 50000)) {
+					&& learnts.size() > std::max(clauses.size() / 2 + corrector, 20000)) {
 				assert(decisionLevel() == 0);
-				for (int i = 0; i < learnts.size(); ++i)
-					clauses.push(learnts[i]);
-				learnts.clear();
-				result = lbool(switchOnElimination());
-				countableMergeSz = 1;
-				result = lbool(eliminate(true));
-				lastNumLearnts = 0;
+				//for (int i = 0; i < learnts.size(); ++i)
+				//	clauses.push(learnts[i]);
+				//learnts.clear();
+				if (!switchOnElimination()) {
+					result = l_False;
+				} else {
+					countableMergeSz = 1;
+					elim_heap.clear();
+					if (!eliminate(true, false))
+						result = l_False;
+					lastNumLearnts = 0;
+					corrector = learnts.size();
+				}
 			} else {
 				lastNumLearnts = learnts.size();
 				result = search(0); // the parameter is useless in glucose, kept to allow modifications
@@ -292,32 +298,56 @@ bool SimpSolver::addClause_(vec<Lit>& ps) {
 }
 
 bool SimpSolver::switchOnElimination() {
-	assert(learnts.size() == 0);
+	//assert(learnts.size() == 0);
 	use_simplification = true;
-	lbool res = l_False;
+
+	vec<Lit> dummy(1, lit_Undef);
+	bwdsub_tmpunit = ca.alloc(dummy);
 	if (!simplify())
 		return false;
-	res = l_Undef;
 	n_touched = 0;
-	n_occ.growTo(nVars(), -1);
+	n_occ.growTo(nVars() * 2, -1);
 	touched.growTo(nVars(), 0);
 	for (Var i = 0; i < nVars(); ++i)
-		if (assigns[i] == l_Undef) {
+		if (!isEliminated(i)) {
 			n_occ[i] = 0;
 			occurs.init(i);
 			elim_heap.insert(i);
 		}
 	for (int i = 0; i < clauses.size(); ++i) {
 		subsumption_queue.insert(clauses[i]);
-		const Clause & c = ca[clauses[i]];
+		Clause & c = ca[clauses[i]];
+
+		c.calcAbstraction();
+		c.setLearnt(false);
 		for (int j = 0; j < c.size(); ++j) {
-			occurs[var(c[i])].push(clauses[i]);
-			++n_occ[toInt(c[i])];
-			touched[var(c[i])] = 1;
+			Lit l = c[j];
+			assert(!isEliminated(var(l)));
+			occurs[var(l)].push(clauses[i]);
+			++n_occ[toInt(l)];
+			touched[var(l)] = 1;
 			n_touched++;
 
-			if (elim_heap.inHeap(var(c[i])))
-				elim_heap.increase(var(c[i]));
+			if (elim_heap.inHeap(var(l)))
+				elim_heap.increase(var(l));
+		}
+	}
+	for (int i = 0; i < learnts.size(); ++i) {
+		subsumption_queue.insert(learnts[i]);
+		Clause & c = ca[learnts[i]];
+
+		c.calcAbstraction();
+		c.setLearnt(false);
+		for (int j = 0; j < c.size(); ++j) {
+			Lit l = c[j];
+			assert(!isEliminated(var(l)));
+			occurs[var(l)].push(learnts[i]);
+			++n_occ[toInt(l)];
+			touched[var(l)] = 1;
+			n_touched++;
+
+			if (elim_heap.inHeap(var(l)))
+				elim_heap.increase(var(l));
 		}
 	}
 
@@ -326,6 +356,7 @@ bool SimpSolver::switchOnElimination() {
 
 void SimpSolver::removeClause(CRef cr) {
 	const Clause& c = ca[cr];
+
 	if (use_simplification)
 		for (int i = 0; i < c.size(); i++) {
 			n_occ[toInt(c[i])]--;
@@ -775,6 +806,13 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 		while (ok && !asynch_interrupt
 				&& ++countableMergeSz <= opt_elim_count_sz
 				&& cpuTime() - elimStartT < elimMaxTime) {
+
+			if (elim_heap.empty()) {
+				for (Var i = 0; i < nVars(); ++i)
+					if (!isEliminated(i) && value(i) == l_Undef && !frozen[i]) {
+						elim_heap.insert(i);
+					}
+			}
 			eliminate(false);
 			if (countableMergeSz == 2)
 				++countableMergeSz; // skip 3 merging. No benchmark found where this has an impact
@@ -786,27 +824,21 @@ bool SimpSolver::eliminateZib(bool turn_off_elim) {
 	return ok;
 }
 
-bool SimpSolver::eliminate(bool turn_off_elim) {
+bool SimpSolver::eliminate(bool turn_off_elim, bool elimVars) {
 	if (!simplify())
 		return false;
 	else if (!use_simplification)
 		return true;
 
-	if (elim_heap.empty()) {
-		for (Var i = 0; i < nVars(); ++i)
-			if (!isEliminated(i) && value(i) == l_Undef && !frozen[i]) {
-				elim_heap.insert(i);
-			}
-	}
-
 // Main simplification loop:
 //
-
+	int numCl = clauses.size() + learnts.size();
 	while ((n_touched > 0 || bwdsub_assigns < trail.size()
 			|| elim_heap.size() > 0)) {
 
 		gatherTouchedClauses();
 		// printf("  ## (time = %6.2f s) BWD-SUB: queue = %d, trail = %d\n", cpuTime(), subsumption_queue.size(), trail.size() - bwdsub_assigns);
+
 		if ((subsumption_queue.size() > 0 || bwdsub_assigns < trail.size())
 				&& !backwardSubsumptionCheck(true)) {
 			ok = false;
@@ -823,38 +855,42 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 		}
 
 		// printf("  ## (time = %6.2f s) ELIM: vars = %d\n", cpuTime(), elim_heap.size());
-		for (int cnt = 0; !elim_heap.empty(); cnt++) {
-			if (((cnt & 127u) == 0 && cpuTime() - elimStartT > elimMaxTime)
-					|| asynch_interrupt)
-				goto cleanup;
-			Var elim = elim_heap.removeMin();
+		if (elimVars)
+			for (int cnt = 0; !elim_heap.empty(); cnt++) {
+				if (((cnt & 127u) == 0 && cpuTime() - elimStartT > elimMaxTime)
+						|| asynch_interrupt)
+					goto cleanup;
+				Var elim = elim_heap.removeMin();
 
-			if (isEliminated(elim) || value(elim) != l_Undef)
-				continue;
+				if (isEliminated(elim) || value(elim) != l_Undef)
+					continue;
 
-			if (verbosity >= 2 && cnt % 100 == 0)
-				printf("elimination left: %10d\r", elim_heap.size());
+				if (verbosity >= 2 && cnt % 100 == 0)
+					printf("elimination left: %10d\r", elim_heap.size());
 
-			if (use_asymm) {
-				// Temporarily freeze variable. Otherwise, it would immediately end up on the queue again:
-				bool was_frozen = frozen[elim];
-				frozen[elim] = true;
-				if (!asymmVar(elim)) {
+				if (use_asymm) {
+					// Temporarily freeze variable. Otherwise, it would immediately end up on the queue again:
+					bool was_frozen = frozen[elim];
+					frozen[elim] = true;
+					if (!asymmVar(elim)) {
+						ok = false;
+						goto cleanup;
+					}
+					frozen[elim] = was_frozen;
+				}
+
+				// At this point, the variable may have been set by assymetric branching, so check it
+				// again. Also, don't eliminate frozen variables:
+				if (use_elim && value(elim) == l_Undef && !frozen[elim]
+						&& !eliminateVar(elim)) {
+
 					ok = false;
 					goto cleanup;
 				}
-				frozen[elim] = was_frozen;
+				checkGarbage(simp_garbage_frac);
 			}
-
-			// At this point, the variable may have been set by assymetric branching, so check it
-			// again. Also, don't eliminate frozen variables:
-			if (use_elim && value(elim) == l_Undef && !frozen[elim]
-					&& !eliminateVar(elim)) {
-				ok = false;
-				goto cleanup;
-			}
-			checkGarbage(simp_garbage_frac);
-		}
+		else
+			elim_heap.clear();
 
 		assert(subsumption_queue.size() == 0);
 	}
@@ -862,8 +898,11 @@ bool SimpSolver::eliminate(bool turn_off_elim) {
 
 	if (verbosity >= 1 && elimclauses.size() > 0)
 		printf(
-				"c |  Eliminated clauses:     %10.2f Mb                                                                |\n",
-				double(elimclauses.size() * sizeof(uint32_t)) / (1024 * 1024));
+				"c |  Eliminated vars:     	 %d         	                                                       	  |\n",
+				eliminated_vars);
+	printf(
+			"c |  Eliminated cl  :     	 %d         	                                                       	  |\n",
+			numCl - clauses.size() - learnts.size());
 
 	return ok;
 }
@@ -879,7 +918,7 @@ void SimpSolver::cleanUpElim(bool turn_off_elim, bool full) {
 		subsumption_queue.clear(true);
 
 		remove_satisfied = true;
-		ca.extra_clause_field = false;
+		//ca.extra_clause_field = false; // TODO determined by flag
 		// Force full cleanup (this is safe and desirable since it only happens once):
 		rebuildOrderHeap();
 		garbageCollect();
@@ -898,6 +937,10 @@ void SimpSolver::cleanUpClauses() {
 		if (ca[clauses[i]].mark() == 0)
 			clauses[j++] = clauses[i];
 	clauses.shrink(i - j);
+	for (i = j = 0; i < learnts.size(); i++)
+		if (ca[learnts[i]].mark() == 0)
+			learnts[j++] = learnts[i];
+	learnts.shrink(i - j);
 }
 
 //=================================================================================================

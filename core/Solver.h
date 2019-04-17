@@ -86,6 +86,8 @@ public:
 	void toDimacs(const char* file, Lit p, Lit q);
 	void toDimacs(const char* file, Lit p, Lit q, Lit r);
 
+	void checkWatcher(const Lit l);
+
 	// Variable mode:
 	//
 	void setPolarity(Var v, bool b); // Declare which polarity the decision heuristic should use for a variable. Requires mode 'polarity_user'.
@@ -433,6 +435,7 @@ protected:
 				CRef cr = i->cref;
 				Clause& c = ca[cr];
 				Lit false_lit = ~p;
+				assert(c.contains(false_lit));
 				if (c[0] == false_lit)
 					c[0] = c[1], c[1] = false_lit;
 				assert(c[1] == false_lit);

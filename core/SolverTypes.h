@@ -31,6 +31,7 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #define Glucose_SolverTypes_h
 
 #include <assert.h>
+#include <iostream>
 
 #include "mtl/IntTypes.h"
 #include "mtl/Alg.h"
@@ -39,6 +40,8 @@ OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWA
 #include "mtl/Alloc.h"
 
 namespace Glucose {
+
+
 
 //=================================================================================================
 // Variables, literals, lifted booleans, clauses:
@@ -61,6 +64,14 @@ struct Lit {
     bool operator != (Lit p) const { return x != p.x; }
     bool operator <  (Lit p) const { return x < p.x;  } // '<' makes p, ~p adjacent in the ordering.
 };
+
+
+inline Lit lazyLit(int x)
+{
+	Lit l;
+	l.x = x;
+	return l;
+}
 
 
 inline  Lit  mkLit     (Var var, bool sign) { Lit p; p.x = var + var + (int)sign; return p; }
@@ -190,6 +201,10 @@ public:
 
     void setVivified(const bool in)			 { header.vivified = in; }
     bool isVivified() const 				 { return header.vivified; }
+
+    void setLearnt(const bool in)			{ header.learnt = in;}
+
+    bool contains(const Lit L)				{ for(int i=0;i<size();++i) if(data[i].lit == L) return true; return false; }
 
     // NOTE: somewhat unsafe to change the clause in-place! Must manually call 'calcAbstraction' afterwards for
     //       subsumption operations to behave correctly.
