@@ -161,6 +161,7 @@ public:
 
 	// Certified UNSAT ( Thanks to Marijn Heule)
 	const bool certifiedUNSAT;
+	const bool useVivification;
 	DratPrint certPrint;
 
 	// Statistics: (read-only member variable)

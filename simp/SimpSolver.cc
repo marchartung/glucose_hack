@@ -53,7 +53,7 @@ static IntOption opt_clause_lim(_cat, "cl-lim",
 		INT32_MAX, IntRange(-1, INT32_MAX));
 static IntOption opt_elim_count_sz(_cat, "cl-elim-sz",
 		"clause length which counted as merged clauses in var elimination", 7,
-		IntRange(2, INT32_MAX));
+		IntRange(1, INT32_MAX));
 static IntOption opt_subsumption_lim(_cat, "sub-lim",
 		"Do not check if subsumption against a clause larger than this. -1 means no limit.",
 		1000, IntRange(-1, INT32_MAX));
@@ -506,7 +506,7 @@ bool SimpSolver::eliminateVar(Var v) {
 	for (int i = 0; i < pos.size(); i++)
 		for (int j = 0; j < neg.size(); j++) {
 			bool willMerge = merge(ca[pos[i]], ca[neg[j]], v, clause_size)
-					&& clause_size > countableMergeSz;
+					&& (clause_size > countableMergeSz || countableMergeSz < 2);
 			if (willMerge
 					&& (++cnt > cls.size() + grow
 							|| (clause_lim != -1 && clause_size > clause_lim)))
@@ -597,7 +597,6 @@ bool SimpSolver::substitute(Var v, Lit x) {
 		removeClause(cls[i]);
 
 	}
-
 	return true;
 }
 
